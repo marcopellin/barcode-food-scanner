@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lettore Barcode Alimentare</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            margin: auto;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 26px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 24px;
+        }
+
+        /* Camera selector */
+        .camera-select { margin-bottom: 16px; display: none; }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            font-size: 14px;
+            background: white;
+            color: #333;
+        }
+
+        /* Scanner */
+        #scanner-container {
+            width: 100%;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            min-height: 200px;
+            margin-bottom: 16px;
+        }
+
+        /* Sovrascrive stili html5-qrcode per aspect ratio rettangolare (barcode) */
+        #scanner-container video { width: 100% !important; }
+        #scanner-container canvas { width: 100% !important; }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            font-size: 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        #startBtn  { background: #0f3460; color: white; }
+        #startBtn:hover:not(:disabled)  { background: #1a4a80; }
+        #stopBtn   { background: #e53e3e; color: white; }
+        #stopBtn:hover:not(:disabled)   { background: #c53030; }
+        button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* Status */
+        .status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .status.active   { background: #c6f6d5; color: #22543d; }
+        .status.inactive { background: #fed7d7; color: #742a2a; }
+        .status.loading  { background: #bee3f8; color: #2a4365; }
+
+        /* ── Result card ── */
+        .result-card {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid #e2e8f0;
+            transition: border-color 0.3s;
+        }
+
+        .result-card.found   { border-color: #48bb78; }
+        .result-card.error   { border-color: #fc8181; }
+        .result-card.loading { border-color: #63b3ed; }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .card-header h2 { font-size: 16px; color: #2d3748; }
+
+        .spinner {
+            width: 18px; height: 18px;
+            border: 2px solid #bee3f8;
+            border-top-color: #3182ce;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Waiting state */
+        #waitingState {
+            text-align: center;
+            color: #a0aec0;
+            padding: 10px 0;
+            font-size: 14px;
+        }
+
+        /* Product info */
+        #productInfo { display: none; }
+
+        .product-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1a202c;
+            margin-bottom: 4px;
+        }
+
+        .product-brand {
+            font-size: 13px;
+            color: #718096;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Storage badge */
+        .storage-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 16px;
+        }
+
+        .storage-badge.scaffale { background: #fefcbf; color: #744210; border: 1px solid #f6e05e; }
+        .storage-badge.frigo    { background: #ebf8ff; color: #2c5282; border: 1px solid #90cdf4; }
+        .storage-badge.freezer  { background: #f0e6ff; color: #553c9a; border: 1px solid #b794f4; }
+
+        /* Stats row */
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .stat-box {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-box .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #a0aec0;
+            margin-bottom: 4px;
+        }
+
+        .stat-box .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .stat-box .stat-unit {
+            font-size: 11px;
+            color: #718096;
+        }
+
+        /* Barcode scanned */
+        .barcode-scanned {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #a0aec0;
+            background: #edf2f7;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+
+        /* Categories */
+        .cats-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #a0aec0;
+            margin-bottom: 6px;
+        }
+
+        .cats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .cat-tag {
+            font-size: 11px;
+            padding: 3px 8px;
+            background: #edf2f7;
+            color: #4a5568;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Error state */
+        #errorInfo {
+            display: none;
+            color: #c53030;
+            font-size: 14px;
+            padding: 8px 0;
+        }
+
+        /* History */
+        .history-section { margin-top: 24px; }
+
+        .history-section h3 {
+            font-size: 14px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 10px;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            font-size: 13px;
+        }
+
+        .history-item:hover { border-color: #90cdf4; background: #ebf8ff; }
+
+        .h-barcode { font-family: monospace; color: #a0aec0; font-size: 11px; flex-shrink: 0; }
+        .h-name    { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2d3748; font-weight: 600; }
+        .h-badge   { font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 700; flex-shrink: 0; }
+        .h-badge.scaffale { background: #fefcbf; color: #744210; }
+        .h-badge.frigo    { background: #ebf8ff; color: #2c5282; }
+        .h-badge.freezer  { background: #f0e6ff; color: #553c9a; }
+
+        /* Permission modal */
+        .modal {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.show { display: flex; }
+
+        .modal-content {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 20px;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-icon { font-size: 56px; margin-bottom: 16px; }
+        .modal-content h2 { color: #1a202c; margin-bottom: 12px; font-size: 22px; }
+        .modal-content p  { color: #718096; line-height: 1.6; margin-bottom: 16px; font-size: 14px; }
+
+        .modal-btn {
+            background: #0f3460;
+            color: white;
+            padding: 14px 36px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .modal-btn:hover { background: #1a4a80; }
+    </style>
+</head>
+<body>
+
+<!-- Permission modal -->
+<div class="modal" id="permissionModal">
+    <div class="modal-content">
+        <div class="modal-icon">📷</div>
+        <h2>Accesso alla Fotocamera</h2>
+        <p>Questa app ha bisogno della fotocamera per scansionare i barcode dei prodotti alimentari.</p>
+        <p><strong>Nessuna immagine viene salvata o inviata.</strong></p>
+        <button class="modal-btn" id="grantBtn">Consenti Accesso</button>
+    </div>
+</div>
+
+<div class="container">
+    <h1>🛒 Food Barcode Scanner</h1>
+    <p class="subtitle">Inquadra il barcode di un prodotto alimentare</p>
+
+    <div class="camera-select" id="cameraSelectContainer">
+        <select id="cameraSelect"></select>
+    </div>
+
+    <div id="scanner-container"></div>
+
+    <div class="controls">
+        <button id="startBtn">▶ Avvia Scanner</button>
+        <button id="stopBtn" disabled>⏹ Ferma Scanner</button>
+    </div>
+
+    <div class="status inactive" id="status">Scanner inattivo</div>
+
+    <!-- Result card -->
+    <div class="result-card" id="resultCard">
+        <div class="card-header">
+            <h2>Informazioni Prodotto</h2>
+            <div class="spinner" id="spinner"></div>
+        </div>
+
+        <div id="waitingState">In attesa di scansione…</div>
+
+        <div id="productInfo">
+            <div class="barcode-scanned" id="barcodeDisplay"></div>
+            <div class="product-name" id="pName"></div>
+            <div class="product-brand" id="pBrand"></div>
+            <div id="pBadge"></div>
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">Conservazione</div>
+                    <div class="stat-value" id="pCons" style="font-size:16px;margin-top:4px"></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Shelf life stimata</div>
+                    <div class="stat-value" id="pShelf"></div>
+                    <div class="stat-unit">giorni</div>
+                </div>
+            </div>
+            <div class="cats-label">Categorie</div>
+            <div class="cats" id="pCats"></div>
+        </div>
+
+        <div id="errorInfo"></div>
+    </div>
+
+    <!-- History -->
+    <div class="history-section" id="historySection" style="display:none">
+        <h3>Scansioni recenti</h3>
+        <div class="history-list" id="historyList"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+    // ── Refs ────────────────────────────────────────────────────
+    const startBtn      = document.getElementById('startBtn');
+    const stopBtn       = document.getElementById('stopBtn');
+    const statusDiv     = document.getElementById('status');
+    const resultCard    = document.getElementById('resultCard');
+    const spinner       = document.getElementById('spinner');
+    const waitingState  = document.getElementById('waitingState');
+    const productInfo   = document.getElementById('productInfo');
+    const errorInfo     = document.getElementById('errorInfo');
+    const permModal     = document.getElementById('permissionModal');
+    const cameraSelCont = document.getElementById('cameraSelectContainer');
+    const cameraSelect  = document.getElementById('cameraSelect');
+
+    // ── State ───────────────────────────────────────────────────
+    let scanner        = null;
+    let isScanning     = false;
+    let selectedDevice = null;
+    let lastCode       = null;
+    let debounce       = null;
+    const history      = [];
+
+    // ── Init ────────────────────────────────────────────────────
+    document.getElementById('grantBtn').addEventListener('click', async () => {
+        try {
+            const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            s.getTracks().forEach(t => t.stop());
+            permModal.classList.remove('show');
+            initScanner();
+        } catch (err) {
+            permModal.classList.remove('show');
+            alert('Permesso fotocamera negato: ' + err.message);
+        }
+    });
+
+    startBtn.addEventListener('click', () => {
+        if (!scanner) { permModal.classList.add('show'); return; }
+        startScanning();
+    });
+
+    stopBtn.addEventListener('click', stopScanner);
+
+    cameraSelect.addEventListener('change', e => {
+        selectedDevice = e.target.value;
+        if (isScanning) { stopScanner(); setTimeout(startScanning, 400); }
+    });
+
+    function initScanner() {
+        scanner = new Html5Qrcode('scanner-container');
+
+        Html5Qrcode.getCameras().then(devices => {
+            if (!devices.length) return;
+
+            if (devices.length > 1) {
+                cameraSelCont.style.display = 'block';
+                cameraSelect.innerHTML = '';
+                devices.forEach((d, i) => {
+                    const o = document.createElement('option');
+                    o.value = d.id;
+                    o.text = d.label || `Fotocamera ${i + 1}`;
+                    cameraSelect.appendChild(o);
+                });
+            }
+
+            // Preferisci fotocamera posteriore
+            const back = devices.find(d => /back|rear|environment|posteriore/i.test(d.label));
+            selectedDevice = back ? back.id : devices[devices.length - 1].id;
+            cameraSelect.value = selectedDevice;
+
+            startScanning();
+        }).catch(() => startScanning());
+    }
+
+    function startScanning() {
+        if (!scanner || isScanning) return;
+
+        startBtn.disabled = true;
+        stopBtn.disabled  = false;
+        setStatus('active', '🔍 Scanner attivo — inquadra il barcode');
+
+        // Configurazione ottimale per barcode 1D (rettangolare)
+        const config = {
+            fps: 15,
+            qrbox: { width: 320, height: 120 },   // area rettangolare per barcode
+            aspectRatio: 1.7,
+            formatsToSupport: [
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.QR_CODE,
+            ]
+        };
+
+        const camId = selectedDevice || { facingMode: 'environment' };
+
+        scanner.start(camId, config, onScanSuccess, () => {}).then(() => {
+            isScanning = true;
+        }).catch(err => {
+            stopScanner();
+            alert('Errore avvio scanner: ' + err);
+        });
+    }
+
+    function stopScanner() {
+        if (!scanner || !isScanning) return;
+        scanner.stop().then(() => {
+            isScanning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled  = true;
+            setStatus('inactive', 'Scanner inattivo');
+        }).catch(console.error);
+    }
+
+    // ── Scan success ─────────────────────────────────────────────
+    function onScanSuccess(code) {
+        if (code === lastCode) return;
+        lastCode = code;
+        clearTimeout(debounce);
+        debounce = setTimeout(() => { lastCode = null; }, 4000);
+
+        playBeep();
+        if (navigator.vibrate) navigator.vibrate(150);
+
+        setStatus('loading', `📦 Codice: ${code} — Ricerca in corso…`);
+        lookupBarcode(code);
+    }
+
+    // ── API ───────────────────────────────────────────────────────
+    async function lookupBarcode(barcode) {
+        showLoading();
+        try {
+            const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (data.status !== 1) throw new Error('Prodotto non trovato nel database OpenFoodFacts');
+
+            const parsed = parseProduct(data.product || {});
+            showProduct(barcode, parsed);
+            addHistory(barcode, parsed);
+            setStatus('active', '✅ Prodotto trovato — puoi scansionare un altro barcode');
+
+        } catch (err) {
+            showError(err.message);
+            setStatus('active', '⚠️ Prodotto non trovato — riprova');
+        }
+    }
+
+    function parseProduct(p) {
+        const name   = p.product_name || p.product_name_en || p.product_name_it || 'Nome non disponibile';
+        const brand  = p.brands || '';
+        const cats   = p.categories_tags || [];
+        const catStr = cats.join(' ').toLowerCase();
+
+        let conservazione, shelf_life_days;
+
+        if (/ice.cream|frozen|surgelat|frozen_food/.test(catStr)) {
+            conservazione = 'freezer'; shelf_life_days = 365;
+        } else if (/milk|yogurt|cheese|fresh|latticin|dairy|cream/.test(catStr)) {
+            conservazione = 'frigo';   shelf_life_days = 30;
+        } else if (/meat|fish|pesce|carne|salumi/.test(catStr)) {
+            conservazione = 'frigo';   shelf_life_days = 7;
+        } else if (/beverage|water|juice|wine|beer|drink/.test(catStr)) {
+            conservazione = /alcohol/.test(catStr) ? 'scaffale' : 'scaffale';
+            shelf_life_days = 365;
+        } else {
+            conservazione = 'scaffale'; shelf_life_days = 365;
+        }
+
+        return { name, brand, conservazione, shelf_life_days, categories: cats };
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────
+    function setStatus(type, msg) {
+        statusDiv.className = 'status ' + (type === 'loading' ? 'loading' : type === 'active' ? 'active' : 'inactive');
+        statusDiv.textContent = msg;
+    }
+
+    function showLoading() {
+        resultCard.className = 'result-card loading';
+        spinner.style.display = 'block';
+        waitingState.style.display = 'none';
+        productInfo.style.display  = 'none';
+        errorInfo.style.display    = 'none';
+    }
+
+    function showProduct(barcode, p) {
+        spinner.style.display = 'none';
+        resultCard.className  = 'result-card found';
+        waitingState.style.display = 'none';
+        errorInfo.style.display    = 'none';
+        productInfo.style.display  = 'block';
+
+        document.getElementById('barcodeDisplay').textContent = `# ${barcode}`;
+        document.getElementById('pName').textContent   = p.name;
+        document.getElementById('pBrand').textContent  = p.brand ? p.brand.toUpperCase() : 'MARCA NON DISPONIBILE';
+        document.getElementById('pCons').textContent   = p.conservazione;
+        document.getElementById('pShelf').textContent  = p.shelf_life_days;
+
+        const icons = { scaffale: '📦', frigo: '🧊', freezer: '❄️' };
+        document.getElementById('pBadge').innerHTML =
+            `<span class="storage-badge ${p.conservazione}">${icons[p.conservazione]} ${p.conservazione.toUpperCase()}</span>`;
+
+        const catsEl = document.getElementById('pCats');
+        catsEl.innerHTML = '';
+        p.categories.slice(0, 12).forEach(c => {
+            const tag = document.createElement('span');
+            tag.className = 'cat-tag';
+            tag.textContent = c.replace(/^(en|it|fr|de|es):/, '');
+            catsEl.appendChild(tag);
+        });
+    }
+
+    function showError(msg) {
+        spinner.style.display = 'none';
+        resultCard.className  = 'result-card error';
+        waitingState.style.display = 'none';
+        productInfo.style.display  = 'none';
+        errorInfo.style.display    = 'block';
+        errorInfo.textContent      = '⚠️ ' + msg;
+    }
+
+    function addHistory(barcode, p) {
+        if (history.find(h => h.barcode === barcode)) return;
+        history.unshift({ barcode, ...p });
+        if (history.length > 5) history.pop();
+        renderHistory();
+    }
+
+    function renderHistory() {
+        const section = document.getElementById('historySection');
+        const list    = document.getElementById('historyList');
+        section.style.display = 'block';
+        list.innerHTML = history.map((h, i) => `
+            <div class="history-item" onclick='showProduct("${h.barcode}", history[${i}])'>
+                <span class="h-barcode">${h.barcode}</span>
+                <span class="h-name">${h.name}</span>
+                <span class="h-badge ${h.conservazione}">${h.conservazione}</span>
+            </div>
+        `).join('');
+    }
+
+    function playBeep() {
+        try {
+            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+            const osc  = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 880;
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+            osc.start(); osc.stop(ctx.currentTime + 0.15);
+        } catch {}
+    }
+
+    window.addEventListener('beforeunload', () => { if (isScanning) stopScanner(); });
+</script>
+</body>
+</html>
