@@ -230,6 +230,29 @@
         }
 
         /* Categories */
+        .shelf-source {
+            font-size: 11px;
+            color: #a0aec0;
+            background: #edf2f7;
+            border: 1px dashed #cbd5e0;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+
+        .shelf-source::before { content: "ℹ️ "; }
+
+        .api-note {
+            font-size: 12px;
+            color: #2c5282;
+            background: #ebf8ff;
+            border: 1px solid #90cdf4;
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+
         .cats-label {
             font-size: 11px;
             text-transform: uppercase;
@@ -401,6 +424,8 @@
                     <div class="stat-unit">giorni</div>
                 </div>
             </div>
+            <div id="shelfSource" class="shelf-source" style="display:none"></div>
+            <div id="apiNote" class="api-note" style="display:none"></div>
             <div class="cats-label">Categorie</div>
             <div class="cats" id="pCats"></div>
         </div>
@@ -566,28 +591,155 @@
         }
     }
 
+    // ── Shelf life lookup table ───────────────────────────────────
+    // Ordinata dal più specifico al più generico.
+    // storage: 'freezer' | 'frigo' | 'scaffale'
+    // days: shelf life tipica in giorni (fonti: normativa EU, USDA FoodKeeper, Reg. 1169/2011)
+    const SHELF_LIFE_TABLE = [
+
+        // ── FREEZER ──────────────────────────────────────────────
+        { cat: 'en:ice-creams',             storage: 'freezer', days: 270, label: 'gelati' },
+        { cat: 'en:frozen-meats',           storage: 'freezer', days: 120, label: 'carni surgelate' },
+        { cat: 'en:frozen-fish',            storage: 'freezer', days: 180, label: 'pesce surgelato' },
+        { cat: 'en:frozen-vegetables',      storage: 'freezer', days: 270, label: 'verdure surgelate' },
+        { cat: 'en:frozen-pizzas',          storage: 'freezer', days: 180, label: 'pizze surgelate' },
+        { cat: 'en:frozen-foods',           storage: 'freezer', days: 270, label: 'surgelati generici' },
+
+        // ── FRIGO — latticini ─────────────────────────────────────
+        { cat: 'en:fresh-pasteurised-milk', storage: 'frigo',   days: 7,   label: 'latte fresco pastorizzato' },
+        { cat: 'en:ultra-high-temperature-milks', storage: 'scaffale', days: 180, label: 'latte UHT' },
+        { cat: 'en:plant-based-milks',      storage: 'scaffale', days: 270, label: 'bevande vegetali' },
+        { cat: 'en:milks',                  storage: 'frigo',   days: 7,   label: 'latte' },
+        { cat: 'en:yogurts',                storage: 'frigo',   days: 21,  label: 'yogurt' },
+        { cat: 'en:fermented-milks',        storage: 'frigo',   days: 21,  label: 'latti fermentati' },
+        { cat: 'en:hard-cheeses',           storage: 'frigo',   days: 180, label: 'formaggi duri' },
+        { cat: 'en:semi-hard-cheeses',      storage: 'frigo',   days: 60,  label: 'formaggi semi-duri' },
+        { cat: 'en:soft-cheeses',           storage: 'frigo',   days: 14,  label: 'formaggi molli' },
+        { cat: 'en:fresh-cheeses',          storage: 'frigo',   days: 7,   label: 'formaggi freschi' },
+        { cat: 'en:mozzarella',             storage: 'frigo',   days: 10,  label: 'mozzarella' },
+        { cat: 'en:creams',                 storage: 'frigo',   days: 14,  label: 'panna' },
+        { cat: 'en:butters',                storage: 'frigo',   days: 60,  label: 'burro' },
+        { cat: 'en:cheeses',                storage: 'frigo',   days: 30,  label: 'formaggi' },
+        { cat: 'en:dairy-desserts',         storage: 'frigo',   days: 14,  label: 'dessert lattiero-caseari' },
+
+        // ── FRIGO — carni e salumi ────────────────────────────────
+        { cat: 'en:fresh-meats',            storage: 'frigo',   days: 3,   label: 'carni fresche' },
+        { cat: 'en:poultry',                storage: 'frigo',   days: 2,   label: 'pollame fresco' },
+        { cat: 'en:ground-meats',           storage: 'frigo',   days: 2,   label: 'carne macinata' },
+        { cat: 'en:cooked-hams',            storage: 'frigo',   days: 5,   label: 'prosciutto cotto' },
+        { cat: 'en:dry-cured-hams',         storage: 'frigo',   days: 90,  label: 'prosciutto crudo' },
+        { cat: 'en:salami',                 storage: 'frigo',   days: 30,  label: 'salame' },
+        { cat: 'en:sausages',               storage: 'frigo',   days: 5,   label: 'würstel/salsicce' },
+        { cat: 'en:smoked-sausages',        storage: 'frigo',   days: 14,  label: 'insaccati affumicati' },
+        { cat: 'en:cured-meats',            storage: 'frigo',   days: 14,  label: 'salumi generici' },
+        { cat: 'en:meats',                  storage: 'frigo',   days: 3,   label: 'carni generiche' },
+
+        // ── FRIGO — pesce fresco ──────────────────────────────────
+        { cat: 'en:smoked-salmons',         storage: 'frigo',   days: 14,  label: 'salmone affumicato' },
+        { cat: 'en:smoked-fish',            storage: 'frigo',   days: 10,  label: 'pesce affumicato' },
+        { cat: 'en:fresh-fish',             storage: 'frigo',   days: 2,   label: 'pesce fresco' },
+        { cat: 'en:fishes',                 storage: 'frigo',   days: 2,   label: 'pesce' },
+
+        // ── FRIGO — uova e pronti ─────────────────────────────────
+        { cat: 'en:eggs',                   storage: 'frigo',   days: 28,  label: 'uova' },
+        { cat: 'en:prepared-salads',        storage: 'frigo',   days: 5,   label: 'insalate pronte' },
+        { cat: 'en:fresh-pasta',            storage: 'frigo',   days: 7,   label: 'pasta fresca' },
+        { cat: 'en:ready-made-meals',       storage: 'frigo',   days: 4,   label: 'piatti pronti' },
+        { cat: 'en:hummus',                 storage: 'frigo',   days: 10,  label: 'hummus' },
+
+        // ── SCAFFALE — pasta, cereali, legumi ─────────────────────
+        { cat: 'en:pastas',                 storage: 'scaffale', days: 730, label: 'pasta secca' },
+        { cat: 'en:rices',                  storage: 'scaffale', days: 730, label: 'riso' },
+        { cat: 'en:flours',                 storage: 'scaffale', days: 365, label: 'farine' },
+        { cat: 'en:breads',                 storage: 'scaffale', days: 5,   label: 'pane' },
+        { cat: 'en:breakfast-cereals',      storage: 'scaffale', days: 365, label: 'cereali colazione' },
+        { cat: 'en:dried-legumes',          storage: 'scaffale', days: 730, label: 'legumi secchi' },
+        { cat: 'en:canned-legumes',         storage: 'scaffale', days: 1095,label: 'legumi in scatola' },
+        { cat: 'en:crackers',               storage: 'scaffale', days: 180, label: 'crackers' },
+        { cat: 'en:biscuits',               storage: 'scaffale', days: 180, label: 'biscotti' },
+
+        // ── SCAFFALE — conserve e condimenti ─────────────────────
+        { cat: 'en:canned-tomatoes',        storage: 'scaffale', days: 730, label: 'pelati/passata' },
+        { cat: 'en:tomato-sauces',          storage: 'scaffale', days: 545, label: 'sughi pronti' },
+        { cat: 'en:jams',                   storage: 'scaffale', days: 730, label: 'marmellate' },
+        { cat: 'en:honeys',                 storage: 'scaffale', days: 730, label: 'miele' },
+        { cat: 'en:olive-oils',             storage: 'scaffale', days: 545, label: 'olio d\'oliva' },
+        { cat: 'en:vinegars',               storage: 'scaffale', days: 1095,label: 'aceto' },
+        { cat: 'en:table-salts',            storage: 'scaffale', days: 1825,label: 'sale' },
+        { cat: 'en:sugars',                 storage: 'scaffale', days: 1825,label: 'zucchero' },
+        { cat: 'en:canned-fish',            storage: 'scaffale', days: 1095,label: 'pesce in scatola' },
+        { cat: 'en:canned-foods',           storage: 'scaffale', days: 1095,label: 'conserve generiche' },
+
+        // ── SCAFFALE — snack e dolci ──────────────────────────────
+        { cat: 'en:chocolates',             storage: 'scaffale', days: 365, label: 'cioccolato' },
+        { cat: 'en:chocolate-bars',         storage: 'scaffale', days: 365, label: 'barrette cioccolato' },
+        { cat: 'en:candies',                storage: 'scaffale', days: 365, label: 'caramelle' },
+        { cat: 'en:chips-and-fries',        storage: 'scaffale', days: 90,  label: 'patatine' },
+        { cat: 'en:snacks',                 storage: 'scaffale', days: 120, label: 'snack' },
+        { cat: 'en:cakes',                  storage: 'scaffale', days: 7,   label: 'torte/merendine' },
+        { cat: 'en:ice-cream-cones',        storage: 'scaffale', days: 180, label: 'cialde' },
+
+        // ── SCAFFALE — bevande ────────────────────────────────────
+        { cat: 'en:mineral-waters',         storage: 'scaffale', days: 730, label: 'acqua minerale' },
+        { cat: 'en:fruit-juices',           storage: 'scaffale', days: 180, label: 'succhi di frutta' },
+        { cat: 'en:carbonated-drinks',      storage: 'scaffale', days: 270, label: 'bevande gassate' },
+        { cat: 'en:energy-drinks',          storage: 'scaffale', days: 365, label: 'energy drink' },
+        { cat: 'en:wines',                  storage: 'scaffale', days: 730, label: 'vino' },
+        { cat: 'en:beers',                  storage: 'scaffale', days: 270, label: 'birra' },
+        { cat: 'en:spirits',                storage: 'scaffale', days: 1825,label: 'superalcolici' },
+        { cat: 'en:coffees',                storage: 'scaffale', days: 545, label: 'caffè' },
+        { cat: 'en:teas',                   storage: 'scaffale', days: 730, label: 'tè' },
+        { cat: 'en:beverages',              storage: 'scaffale', days: 365, label: 'bevande generiche' },
+
+        // ── SCAFFALE — baby food ──────────────────────────────────
+        { cat: 'en:baby-foods',             storage: 'scaffale', days: 730, label: 'alimenti per bambini' },
+        { cat: 'en:infant-formulas',        storage: 'scaffale', days: 365, label: 'latte in polvere neonati' },
+    ];
+
+    // Fallback finale per tipo di conservazione (ultimo resort)
+    const STORAGE_FALLBACK = {
+        freezer:  { days: 270, label: 'surgelato generico' },
+        frigo:    { days: 7,   label: 'refrigerato generico' },
+        scaffale: { days: 365, label: 'secco/conserva generico' },
+    };
+
+    // Deduce il tipo di conservazione da macro-pattern sulle categorie
+    function detectStorage(cats) {
+        const s = cats.join(' ').toLowerCase();
+        if (/frozen|surgelat|ice.cream/.test(s))            return 'freezer';
+        if (/fresh|frigo|refrigerat|dairy|milk|yogurt|cheese|meat|fish|egg|ham|salami|sausage|cream|butter/.test(s)) return 'frigo';
+        return 'scaffale';
+    }
+
     function parseProduct(p) {
-        const name   = p.product_name || p.product_name_en || p.product_name_it || 'Nome non disponibile';
-        const brand  = p.brands || '';
-        const cats   = p.categories_tags || [];
-        const catStr = cats.join(' ').toLowerCase();
+        const name  = p.product_name || p.product_name_en || p.product_name_it || 'Nome non disponibile';
+        const brand = p.brands || '';
+        const cats  = p.categories_tags || [];
 
-        let conservazione, shelf_life_days;
+        // ── STEP 1: campo conservation_conditions dall'API (raramente presente) ──
+        const apiConservation = p.conservation_conditions || p.storage_conditions || null;
 
-        if (/ice.cream|frozen|surgelat|frozen_food/.test(catStr)) {
-            conservazione = 'freezer'; shelf_life_days = 365;
-        } else if (/milk|yogurt|cheese|fresh|latticin|dairy|cream/.test(catStr)) {
-            conservazione = 'frigo';   shelf_life_days = 30;
-        } else if (/meat|fish|pesce|carne|salumi/.test(catStr)) {
-            conservazione = 'frigo';   shelf_life_days = 7;
-        } else if (/beverage|water|juice|wine|beer|drink/.test(catStr)) {
-            conservazione = /alcohol/.test(catStr) ? 'scaffale' : 'scaffale';
-            shelf_life_days = 365;
-        } else {
-            conservazione = 'scaffale'; shelf_life_days = 365;
+        // ── STEP 2: match gerarchico nella tabella (dal più specifico) ──────────
+        let matched = null;
+        for (const row of SHELF_LIFE_TABLE) {
+            if (cats.includes(row.cat)) { matched = row; break; }
         }
 
-        return { name, brand, conservazione, shelf_life_days, categories: cats };
+        let conservazione, shelf_life_days, shelf_source;
+
+        if (matched) {
+            conservazione   = matched.storage;
+            shelf_life_days = matched.days;
+            shelf_source    = `stima · categoria: ${matched.label}`;
+        } else {
+            // ── STEP 3: fallback per tipo dedotto da macro-pattern ────────────
+            conservazione = detectStorage(cats);
+            const fb      = STORAGE_FALLBACK[conservazione];
+            shelf_life_days = fb.days;
+            shelf_source    = `stima generica · ${fb.label}`;
+        }
+
+        return { name, brand, conservazione, shelf_life_days, shelf_source, apiConservation, categories: cats };
     }
 
     // ── UI helpers ────────────────────────────────────────────────
@@ -612,10 +764,24 @@
         productInfo.style.display  = 'block';
 
         document.getElementById('barcodeDisplay').textContent = `# ${barcode}`;
-        document.getElementById('pName').textContent   = p.name;
-        document.getElementById('pBrand').textContent  = p.brand ? p.brand.toUpperCase() : 'MARCA NON DISPONIBILE';
-        document.getElementById('pCons').textContent   = p.conservazione;
-        document.getElementById('pShelf').textContent  = p.shelf_life_days;
+        document.getElementById('pName').textContent  = p.name;
+        document.getElementById('pBrand').textContent = p.brand ? p.brand.toUpperCase() : 'MARCA NON DISPONIBILE';
+        document.getElementById('pCons').textContent  = p.conservazione;
+        document.getElementById('pShelf').textContent = p.shelf_life_days;
+
+        // Fonte della stima
+        const srcEl = document.getElementById('shelfSource');
+        srcEl.textContent = p.shelf_source;
+        srcEl.style.display = 'inline-block';
+
+        // Nota conservazione da API (se presente)
+        const apiNoteEl = document.getElementById('apiNote');
+        if (p.apiConservation) {
+            apiNoteEl.textContent = '📋 Note API: ' + p.apiConservation;
+            apiNoteEl.style.display = 'block';
+        } else {
+            apiNoteEl.style.display = 'none';
+        }
 
         const icons = { scaffale: '📦', frigo: '🧊', freezer: '❄️' };
         document.getElementById('pBadge').innerHTML =
